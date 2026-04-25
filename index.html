@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ProTrack — AI Protein Tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+<!-- Firebase SDK (v10 modular, loaded as module) -->
+<script type="module">
+  import { initializeApp }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+  import { getFirestore, doc, getDoc, setDoc, collection, getDocs, query, orderBy }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+  // ── PASTE YOUR FIREBASE CONFIG HERE ─────────────────────────────────
+  const firebaseConfig = {
+    apiKey:            "AIzaSyAIpey1Os1yA6VoUzQyRjlFQy_G20Nr6Sg",
+    authDomain:        "protract-8dd11.firebaseapp.com",
+    projectId:         "protract-8dd11",
+    storageBucket:     "protract-8dd11.firebasestorage.app",
+    messagingSenderId: "473642410083",
+    appId:             "1:473642410083:web:b8ae3b3f1273d0ef9bd856"
+  };
+  // ────────────────────────────────────────────────────────────────────
+
+  const app  = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db   = getFirestore(app);
+
+  window._fb = { auth, db, GoogleAuthProvider, signInWithPopup, signOut,
+    onAuthStateChanged, doc, getDoc, setDoc, collection, getDocs, query, orderBy };
+</script>
+
+<style>
+:root{
+  --bg:#0a0a0f;--bg2:#111118;--bg3:#18181f;
+  --card:#1c1c25;--card2:#22222d;--border:#2a2a38;
+  --accent:#00e5a0;--accent2:#7c3aed;--accent3:#f59e0b;--accent4:#ef4444;
+  --text:#f0f0f8;--text2:#9090a8;--text3:#5a5a70;
+  --glow:rgba(0,229,160,0.15);
+  --font-display:'Bebas Neue',sans-serif;
+  --font-body:'DM Sans',sans-serif;
+  --font-mono:'JetBrains Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:var(--font-body);min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;
+  background-image:linear-gradient(rgba(0,229,160,0.03) 1px,transparent 1px),
+  linear-gradient(90deg,rgba(0,229,160,0.03) 1px,transparent 1px);
+  background-size:40px 40px;pointer-events:none;z-index:0}
+
+/* LOGIN */
+#loginScreen{position:fixed;inset:0;background:var(--bg);z-index:999;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;
+  animation:fadeUp 0.6s ease}
+.login-logo{font-family:var(--font-display);font-size:4rem;letter-spacing:6px;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.login-sub{font-size:0.82rem;color:var(--text3);letter-spacing:3px;text-transform:uppercase}
+.login-desc{font-size:0.88rem;color:var(--text2);text-align:center;max-width:340px;line-height:1.7}
+.google-btn{display:flex;align-items:center;gap:12px;background:white;color:#1a1a1a;
+  border:none;padding:14px 28px;border-radius:12px;cursor:pointer;
+  font-family:var(--font-body);font-weight:600;font-size:0.95rem;
+  transition:all 0.25s;box-shadow:0 4px 20px rgba(0,0,0,0.3)}
+.google-btn:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(0,0,0,0.4)}
+.google-btn svg{width:20px;height:20px}
+.setup-link{font-size:0.78rem;color:var(--text3);cursor:pointer;text-decoration:underline;
+  text-underline-offset:3px;transition:color 0.2s}
+.setup-link:hover{color:var(--accent3)}
+.login-note{font-size:0.72rem;color:var(--text3);text-align:center;max-width:300px;line-height:1.6}
+
+/* MAIN */
+.app-wrapper{position:relative;z-index:1;max-width:1100px;margin:0 auto;padding:24px 20px 60px}
+
+/* HEADER */
+header{display:flex;align-items:center;justify-content:space-between;
+  padding:18px 0 32px;border-bottom:1px solid var(--border);margin-bottom:32px;
+  animation:fadeDown 0.6s ease;flex-wrap:wrap;gap:12px}
+.logo{display:flex;flex-direction:column;gap:2px}
+.logo-text{font-family:var(--font-display);font-size:2.8rem;letter-spacing:4px;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;line-height:1}
+.logo-sub{font-size:0.72rem;color:var(--text3);letter-spacing:3px;text-transform:uppercase}
+.header-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.date-badge{background:var(--card);border:1px solid var(--border);padding:8px 16px;
+  border-radius:8px;font-family:var(--font-mono);font-size:0.78rem;color:var(--text2)}
+.sync-pill{display:flex;align-items:center;gap:6px;font-size:0.75rem;color:var(--text3);
+  background:var(--card);border:1px solid var(--border);padding:6px 12px;border-radius:100px}
+.sync-dot{width:7px;height:7px;border-radius:50%;background:var(--text3);transition:all 0.3s}
+.sync-dot.synced{background:var(--accent);box-shadow:0 0 6px var(--accent)}
+.sync-dot.syncing{background:var(--accent3);animation:pulse 0.8s ease infinite}
+.sync-dot.error{background:var(--accent4)}
+.user-chip{display:flex;align-items:center;gap:8px;background:var(--card);
+  border:1px solid var(--border);padding:6px 12px 6px 8px;border-radius:100px;
+  cursor:pointer;transition:all 0.2s;font-size:0.78rem;color:var(--text2)}
+.user-chip:hover{border-color:var(--accent4);color:var(--accent4)}
+.user-avatar{width:24px;height:24px;border-radius:50%;object-fit:cover}
+.hdr-btn{background:var(--card);border:1px solid var(--accent2);color:var(--accent2);
+  padding:8px 16px;border-radius:8px;cursor:pointer;font-family:var(--font-body);
+  font-size:0.82rem;font-weight:500;transition:all 0.25s;display:flex;align-items:center;gap:6px}
+.hdr-btn:hover{background:var(--accent2);color:white;box-shadow:0 0 20px rgba(124,58,237,0.4);transform:translateY(-1px)}
+.hdr-btn.amber{border-color:var(--accent3);color:var(--accent3)}
+.hdr-btn.amber:hover{background:var(--accent3);color:#000;box-shadow:0 0 20px rgba(245,158,11,0.4)}
+
+/* GOAL BAR */
+.goal-section{background:var(--card);border:1px solid var(--border);border-radius:16px;
+  padding:20px 24px;margin-bottom:24px;animation:fadeUp 0.5s ease 0.1s both;
+  position:relative;overflow:hidden}
+.goal-section::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,var(--accent),var(--accent2),var(--accent3))}
+.goal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.goal-title{font-size:0.78rem;color:var(--text3);letter-spacing:2px;text-transform:uppercase}
+.goal-nums{font-family:var(--font-mono);font-size:0.85rem;color:var(--text2)}
+.goal-nums span{color:var(--accent);font-weight:600}
+.progress-track{background:var(--bg);border-radius:100px;height:10px;overflow:hidden}
+.progress-fill{height:100%;border-radius:100px;
+  background:linear-gradient(90deg,var(--accent),var(--accent2));
+  transition:width 0.8s cubic-bezier(0.34,1.56,0.64,1);
+  box-shadow:0 0 12px var(--glow);position:relative}
+.progress-fill::after{content:'';position:absolute;right:0;top:0;bottom:0;width:8px;
+  background:white;border-radius:100px;opacity:0.6;animation:pulse 1.5s ease infinite}
+.goal-stats{display:flex;gap:24px;margin-top:14px;flex-wrap:wrap}
+.goal-stat{display:flex;flex-direction:column;gap:2px}
+.goal-stat-val{font-family:var(--font-mono);font-size:1.4rem;font-weight:600;color:var(--text)}
+.goal-stat-val.green{color:var(--accent)}
+.goal-stat-val.purple{color:var(--accent2)}
+.goal-stat-val.amber{color:var(--accent3)}
+.goal-stat-label{font-size:0.7rem;color:var(--text3);text-transform:uppercase;letter-spacing:1px}
+.score-ring-wrap{position:absolute;right:24px;top:50%;transform:translateY(-50%)}
+.score-text{font-family:var(--font-display);font-size:1.8rem;fill:var(--text);
+  dominant-baseline:middle;text-anchor:middle}
+.score-sub{font-size:0.55rem;fill:var(--text3);dominant-baseline:middle;
+  text-anchor:middle;letter-spacing:1px}
+
+/* GRID */
+.main-grid{display:grid;grid-template-columns:1fr 380px;gap:20px;
+  margin-bottom:24px;animation:fadeUp 0.5s ease 0.2s both}
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px}
+.card-title{font-size:0.72rem;color:var(--text3);letter-spacing:2.5px;text-transform:uppercase;
+  margin-bottom:18px;display:flex;align-items:center;gap:8px}
+.card-title::before{content:'';display:inline-block;width:6px;height:6px;
+  border-radius:50%;background:var(--accent)}
+
+/* FOOD INPUT */
+.quick-presets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.preset-chip{background:var(--bg2);border:1px solid var(--border);color:var(--text2);
+  padding:5px 12px;border-radius:100px;cursor:pointer;font-size:0.75rem;
+  transition:all 0.2s;font-family:var(--font-body)}
+.preset-chip:hover{border-color:var(--accent);color:var(--accent);background:rgba(0,229,160,0.05)}
+.food-input-row{display:flex;gap:10px;margin-bottom:16px}
+.food-input{flex:1;background:var(--bg2);border:1px solid var(--border);color:var(--text);
+  padding:12px 16px;border-radius:10px;font-family:var(--font-body);font-size:0.92rem;
+  outline:none;transition:border-color 0.2s,box-shadow 0.2s}
+.food-input::placeholder{color:var(--text3)}
+.food-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,229,160,0.1)}
+.add-btn{background:linear-gradient(135deg,var(--accent),#00c47a);color:#000;border:none;
+  padding:12px 22px;border-radius:10px;cursor:pointer;font-family:var(--font-body);
+  font-weight:600;font-size:0.88rem;transition:all 0.25s;white-space:nowrap}
+.add-btn:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,229,160,0.35)}
+.add-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+.ai-status{font-size:0.75rem;color:var(--text3);display:flex;align-items:center;gap:6px;
+  min-height:20px;margin-bottom:12px;font-family:var(--font-mono)}
+.spinner{width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--accent);
+  border-radius:50%;animation:spin 0.7s linear infinite;display:none}
+.spinner.active{display:block}
+.food-list{display:flex;flex-direction:column;gap:8px;max-height:320px;overflow-y:auto;padding-right:4px}
+.food-list::-webkit-scrollbar{width:4px}
+.food-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+.food-item{background:var(--bg2);border:1px solid var(--border);border-radius:10px;
+  padding:10px 14px;display:flex;align-items:center;gap:10px;
+  animation:slideIn 0.3s ease;transition:border-color 0.2s}
+.food-item:hover{border-color:var(--accent)}
+.food-item-icon{width:32px;height:32px;background:var(--card2);border-radius:8px;
+  display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0}
+.food-item-info{flex:1}
+.food-item-name{font-size:0.88rem;font-weight:500;color:var(--text);text-transform:capitalize}
+.food-item-detail{font-size:0.72rem;color:var(--text3);font-family:var(--font-mono)}
+.food-item-protein{font-family:var(--font-mono);font-weight:600;font-size:0.95rem;
+  color:var(--accent);flex-shrink:0}
+.food-item-del{background:none;border:none;color:var(--text3);cursor:pointer;
+  padding:4px;border-radius:4px;font-size:0.9rem;transition:color 0.2s}
+.food-item-del:hover{color:var(--accent4)}
+.empty-log{text-align:center;padding:40px 20px;color:var(--text3);font-size:0.85rem}
+.empty-log-icon{font-size:2.5rem;margin-bottom:10px;opacity:0.3}
+
+/* SIDE */
+.side-panel{display:flex;flex-direction:column;gap:16px}
+.chart-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px}
+.chart-canvas-wrap{position:relative;height:180px;display:flex;align-items:center;justify-content:center}
+.eod-btn{background:linear-gradient(135deg,var(--accent2),#9f5ff0);color:white;border:none;
+  padding:14px 20px;border-radius:12px;cursor:pointer;font-family:var(--font-body);
+  font-weight:600;font-size:0.9rem;width:100%;transition:all 0.3s;letter-spacing:0.5px}
+.eod-btn:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(124,58,237,0.4)}
+.info-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px}
+
+/* HISTORY */
+.history-section{background:var(--card);border:1px solid var(--border);
+  border-radius:16px;padding:24px;animation:fadeUp 0.5s ease 0.3s both}
+.history-chart-wrap{height:200px;margin-top:16px}
+
+/* MODALS */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.75);
+  backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;
+  z-index:100;opacity:0;pointer-events:none;transition:opacity 0.3s}
+.modal-overlay.active{opacity:1;pointer-events:all}
+.modal{background:var(--card);border:1px solid var(--border);border-radius:20px;
+  padding:32px;width:90%;max-width:480px;
+  transform:translateY(20px) scale(0.97);transition:transform 0.3s}
+.modal-overlay.active .modal{transform:translateY(0) scale(1)}
+.modal-title{font-family:var(--font-display);font-size:2rem;letter-spacing:3px;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:8px}
+.modal-sub{font-size:0.82rem;color:var(--text3);margin-bottom:24px;line-height:1.6}
+.modal-input{width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--text);
+  padding:14px 18px;border-radius:12px;font-family:var(--font-mono);font-size:1.1rem;
+  outline:none;margin-bottom:16px;transition:border-color 0.2s,box-shadow 0.2s}
+.modal-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,229,160,0.1)}
+.modal-save-btn{width:100%;background:linear-gradient(135deg,var(--accent),#00c47a);
+  color:#000;border:none;padding:14px;border-radius:12px;cursor:pointer;
+  font-weight:700;font-size:0.95rem;transition:all 0.25s;font-family:var(--font-body)}
+.modal-save-btn:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,229,160,0.3)}
+.notice{background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);
+  border-radius:10px;padding:12px 16px;font-size:0.78rem;color:var(--accent3);
+  margin-bottom:14px;line-height:1.5}
+
+/* REPORT */
+.report-modal{max-width:600px;max-height:85vh;overflow-y:auto}
+.report-modal::-webkit-scrollbar{width:4px}
+.report-modal::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+.score-display{text-align:center;padding:24px 0}
+.score-big{font-family:var(--font-display);font-size:6rem;line-height:1;letter-spacing:4px}
+.score-big.excellent{color:var(--accent);text-shadow:0 0 30px rgba(0,229,160,0.4)}
+.score-big.good{color:var(--accent3);text-shadow:0 0 30px rgba(245,158,11,0.4)}
+.score-big.poor{color:var(--accent4);text-shadow:0 0 30px rgba(239,68,68,0.4)}
+.score-grade{font-family:var(--font-display);font-size:1.3rem;letter-spacing:3px;color:var(--text2);margin-top:4px}
+.report-metrics{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin:20px 0}
+.metric-box{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center}
+.metric-val{font-family:var(--font-mono);font-size:1.4rem;font-weight:600;margin-bottom:4px}
+.metric-label{font-size:0.68rem;color:var(--text3);text-transform:uppercase;letter-spacing:1px}
+.report-pie-wrap{height:200px;margin:16px 0}
+.report-food-row{display:flex;justify-content:space-between;align-items:center;
+  padding:8px 0;border-bottom:1px solid var(--border);font-size:0.85rem}
+.report-food-row:last-child{border-bottom:none}
+.ai-insight{background:linear-gradient(135deg,rgba(0,229,160,0.05),rgba(124,58,237,0.05));
+  border:1px solid rgba(0,229,160,0.2);border-radius:12px;padding:16px;
+  margin:16px 0;font-size:0.85rem;line-height:1.7;color:var(--text2)}
+.ai-insight-title{font-size:0.68rem;color:var(--accent);letter-spacing:2px;
+  text-transform:uppercase;margin-bottom:8px}
+.close-btn{width:100%;background:var(--bg2);border:1px solid var(--border);
+  color:var(--text2);padding:12px;border-radius:10px;cursor:pointer;
+  font-family:var(--font-body);font-size:0.88rem;transition:all 0.2s;margin-top:8px}
+.close-btn:hover{border-color:var(--text2);color:var(--text)}
+
+/* SETUP MODAL */
+.setup-modal{max-width:560px;max-height:85vh;overflow-y:auto}
+.setup-modal::-webkit-scrollbar{width:4px}
+.setup-modal::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+.step{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px}
+.step-num{font-family:var(--font-display);font-size:1.1rem;color:var(--accent);letter-spacing:2px;margin-bottom:6px}
+.step-text{font-size:0.82rem;color:var(--text2);line-height:1.8}
+.step-text a{color:var(--accent);text-decoration:none}
+.step-text a:hover{text-decoration:underline}
+.step-text code{background:var(--card2);padding:2px 6px;border-radius:4px;
+  font-family:var(--font-mono);font-size:0.78rem;color:var(--accent3)}
+.cfg-input{width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--text);
+  padding:10px 14px;border-radius:8px;font-family:var(--font-mono);font-size:0.8rem;
+  outline:none;margin:5px 0;transition:border-color 0.2s}
+.cfg-input:focus{border-color:var(--accent)}
+.cfg-input::placeholder{color:var(--text3)}
+
+/* TOAST */
+.toast-container{position:fixed;bottom:24px;right:24px;z-index:200;
+  display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.toast{background:var(--card2);border:1px solid var(--border);border-radius:10px;
+  padding:12px 18px;font-size:0.82rem;color:var(--text);display:flex;align-items:center;
+  gap:8px;box-shadow:0 8px 24px rgba(0,0,0,0.4);animation:slideToast 0.3s ease}
+.toast.success{border-color:rgba(0,229,160,0.4)}
+.toast.error{border-color:rgba(239,68,68,0.4)}
+
+/* ANIMATIONS */
+@keyframes fadeDown{from{opacity:0;transform:translateY(-16px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideIn{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:translateX(0)}}
+@keyframes slideToast{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{opacity:0.6}50%{opacity:0.2}}
+
+@media(max-width:768px){
+  .main-grid{grid-template-columns:1fr}
+  .score-ring-wrap{display:none}
+  .report-metrics{grid-template-columns:1fr 1fr}
+  .date-badge{display:none}
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="loginScreen">
+  <div class="login-logo">PROTRACK</div>
+  <div class="login-sub">AI-Powered Protein Tracker</div>
+  <div class="login-desc">Sign in with Google to sync your protein logs, weight, and history across all your devices — phone, laptop, anywhere.</div>
+  <button class="google-btn" onclick="signInGoogle()">
+    <svg viewBox="0 0 24 24">
+      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+    </svg>
+    Sign in with Google
+  </button>
+  <span class="setup-link" onclick="openModal('setupModal')">⚙️ Firebase not set up yet? Click here for step-by-step guide</span>
+  <div class="login-note">Your data is stored in your own Firebase project — private, secure, yours.</div>
+</div>
+
+<!-- MAIN APP -->
+<div class="app-wrapper" id="mainApp" style="display:none">
+
+  <header>
+    <div class="logo">
+      <div class="logo-text">PROTRACK</div>
+      <div class="logo-sub">AI-Powered Protein Tracker</div>
+    </div>
+    <div class="header-right">
+      <div class="date-badge" id="dateBadge"></div>
+      <div class="sync-pill">
+        <div class="sync-dot" id="syncDot"></div>
+        <span id="syncLabel" style="font-size:0.75rem">Synced</span>
+      </div>
+      <button class="hdr-btn" onclick="openWeightModal()">⚖️ <span id="weightBtnText">Set Weight</span></button>
+      <button class="hdr-btn amber" onclick="openApiKeyModal()">🔑 API Key</button>
+      <div class="user-chip" onclick="doSignOut()" title="Click to sign out">
+        <img class="user-avatar" id="userAvatar" src="" alt="">
+        <span id="userName"></span>
+        <span style="font-size:0.7rem;opacity:0.5">↩</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- GOAL BAR -->
+  <div class="goal-section">
+    <div class="goal-header">
+      <div class="goal-title">Today's Protein Goal</div>
+      <div class="goal-nums"><span id="totalProteins">0g</span> / <span id="goalGrams">--g</span></div>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill" id="progressFill" style="width:0%"></div>
+    </div>
+    <div class="goal-stats">
+      <div class="goal-stat"><div class="goal-stat-val green" id="statConsumed">0g</div><div class="goal-stat-label">Consumed</div></div>
+      <div class="goal-stat"><div class="goal-stat-val purple" id="statRemaining">--g</div><div class="goal-stat-label">Remaining</div></div>
+      <div class="goal-stat"><div class="goal-stat-val amber" id="statItems">0</div><div class="goal-stat-label">Food Items</div></div>
+      <div class="goal-stat"><div class="goal-stat-val" id="statPct">0%</div><div class="goal-stat-label">% of Goal</div></div>
+    </div>
+    <div class="score-ring-wrap">
+      <svg width="80" height="80" viewBox="0 0 80 80">
+        <circle cx="40" cy="40" r="32" fill="none" stroke="#2a2a38" stroke-width="6"/>
+        <circle cx="40" cy="40" r="32" fill="none" stroke="url(#rg)" stroke-width="6"
+          stroke-linecap="round" stroke-dasharray="201.06" stroke-dashoffset="201.06"
+          id="scoreRing" transform="rotate(-90 40 40)"
+          style="transition:stroke-dashoffset 1s cubic-bezier(0.34,1.56,0.64,1)"/>
+        <defs>
+          <linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#00e5a0"/>
+            <stop offset="100%" stop-color="#7c3aed"/>
+          </linearGradient>
+        </defs>
+        <text x="40" y="36" class="score-text" id="scoreRingText">0</text>
+        <text x="40" y="52" class="score-sub">SCORE</text>
+      </svg>
+    </div>
+  </div>
+
+  <!-- MAIN GRID -->
+  <div class="main-grid">
+    <div class="card">
+      <div class="card-title">Add Food Item</div>
+      <div class="quick-presets">
+        <span class="preset-chip" onclick="fillPreset('2 eggs')">🥚 2 Eggs</span>
+        <span class="preset-chip" onclick="fillPreset('100g chicken breast')">🍗 Chicken</span>
+        <span class="preset-chip" onclick="fillPreset('1 cup dal')">🫘 Dal</span>
+        <span class="preset-chip" onclick="fillPreset('200ml milk')">🥛 Milk</span>
+        <span class="preset-chip" onclick="fillPreset('100g paneer')">🧀 Paneer</span>
+        <span class="preset-chip" onclick="fillPreset('1 cup curd')">🥣 Curd</span>
+        <span class="preset-chip" onclick="fillPreset('30g whey protein')">💪 Whey</span>
+        <span class="preset-chip" onclick="fillPreset('100g tofu')">🥡 Tofu</span>
+      </div>
+      <div class="food-input-row">
+        <input type="text" class="food-input" id="foodInput"
+          placeholder="e.g. 2 eggs, 100g chicken, 1 cup dal..."
+          onkeydown="if(event.key==='Enter')addFood()">
+        <button class="add-btn" id="addBtn" onclick="addFood()">+ Add</button>
+      </div>
+      <div class="ai-status">
+        <div class="spinner" id="spinner"></div>
+        <span id="aiStatusText">Type a food item and press Add</span>
+      </div>
+      <div class="card-title">Today's Log</div>
+      <div class="food-list" id="foodList">
+        <div class="empty-log">
+          <div class="empty-log-icon">🥗</div>
+          <div>No food logged yet</div>
+          <div style="margin-top:4px;font-size:0.75rem">Add a food item above</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-panel">
+      <div class="chart-card">
+        <div class="card-title">Today's Breakdown</div>
+        <div class="chart-canvas-wrap">
+          <canvas id="pieChart"></canvas>
+          <div id="pieEmpty" style="color:var(--text3);font-size:0.8rem;position:absolute">No data yet</div>
+        </div>
+      </div>
+      <button class="eod-btn" onclick="generateReport()">📊 &nbsp; Generate End-of-Day Report</button>
+      <div class="info-card">
+        <div style="font-size:0.68rem;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px">Cloud Sync Active</div>
+        <div style="font-size:0.78rem;color:var(--text2);line-height:1.9">
+          ☁️ All data saved to Firebase<br>
+          📱 Works on phone + laptop<br>
+          🔐 Tied to your Google account<br>
+          🤖 AI protein via OpenRouter
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="history-section">
+    <div class="card-title">7-Day Protein History</div>
+    <div class="history-chart-wrap"><canvas id="barChart"></canvas></div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- WEIGHT MODAL -->
+<div class="modal-overlay" id="weightModal">
+  <div class="modal">
+    <div class="modal-title">YOUR WEIGHT</div>
+    <div class="modal-sub">Enter your body weight to set your daily protein goal (0.8–1g per kg). Synced across all devices.</div>
+    <input type="number" class="modal-input" id="weightInput" placeholder="e.g. 75"
+      min="30" max="300" onkeydown="if(event.key==='Enter')saveWeight()" oninput="updateGoalPreview()">
+    <div style="font-size:0.78rem;color:var(--text3);margin-bottom:16px">
+      Daily goal: <strong style="color:var(--accent)" id="goalPreview">--</strong>
+    </div>
+    <button class="modal-save-btn" onclick="saveWeight()">💾 Save & Sync to Cloud</button>
+  </div>
+</div>
+
+<!-- API KEY MODAL -->
+<div class="modal-overlay" id="apiKeyModal">
+  <div class="modal">
+    <div class="modal-title">API KEY</div>
+    <div class="modal-sub">Your OpenRouter API key. Stored encrypted in your private Firebase — synced to all your devices.</div>
+    <div class="notice">🔒 Stored in YOUR Firebase project. Only accessible by your Google account.</div>
+    <input type="password" class="modal-input" id="apiKeyInput" placeholder="sk-or-v1-..."
+      onkeydown="if(event.key==='Enter')saveApiKey()">
+    <button class="modal-save-btn" onclick="saveApiKey()">💾 Save & Sync to Cloud</button>
+  </div>
+</div>
+
+<!-- EOD REPORT MODAL -->
+<div class="modal-overlay" id="reportModal">
+  <div class="modal report-modal">
+    <div class="score-display">
+      <div class="score-big" id="reportScoreBig">--</div>
+      <div class="score-grade" id="reportGrade">--</div>
+    </div>
+    <div style="font-size:0.72rem;color:var(--text3);letter-spacing:2px;text-transform:uppercase;text-align:center;margin-bottom:16px">Today's Report</div>
+    <div class="report-metrics">
+      <div class="metric-box"><div class="metric-val" style="color:var(--accent)" id="repConsumed">0g</div><div class="metric-label">Consumed</div></div>
+      <div class="metric-box"><div class="metric-val" style="color:var(--accent2)" id="repGoal">0g</div><div class="metric-label">Goal</div></div>
+      <div class="metric-box"><div class="metric-val" style="color:var(--accent3)" id="repPct">0%</div><div class="metric-label">Achieved</div></div>
+    </div>
+    <div style="font-size:0.72rem;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px">Food Breakdown</div>
+    <div class="report-pie-wrap"><canvas id="reportPie"></canvas></div>
+    <div id="reportFoodList"></div>
+    <div class="ai-insight">
+      <div class="ai-insight-title">🤖 AI Insight</div>
+      <div id="aiInsightText" style="color:var(--text3);font-size:0.8rem">Generating insight...</div>
+    </div>
+    <button class="modal-save-btn" onclick="saveAndClose()">✅ Save Day & Continue</button>
+    <button class="close-btn" onclick="closeModal('reportModal')">Close</button>
+  </div>
+</div>
+
+<!-- FIREBASE SETUP MODAL -->
+<div class="modal-overlay" id="setupModal">
+  <div class="modal setup-modal">
+    <div class="modal-title">FIREBASE SETUP</div>
+    <div class="modal-sub">One-time setup (~5 min) to enable cross-device sync. Free forever on Firebase's Spark plan.</div>
+
+    <div class="step">
+      <div class="step-num">STEP 1 — CREATE PROJECT</div>
+      <div class="step-text">Go to <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a> → <strong>Add project</strong> → Name it <code>protrack</code> → Disable Google Analytics → <strong>Create project</strong>.</div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">STEP 2 — GET CONFIG</div>
+      <div class="step-text">Inside your project → Click <strong>⚙️ Project Settings</strong> (gear icon) → scroll to <strong>"Your apps"</strong> → Click the <strong>&lt;/&gt; Web</strong> icon → Register app as <code>protrack-web</code> → Copy the <code>firebaseConfig</code> object shown.</div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">STEP 3 — ENABLE GOOGLE LOGIN</div>
+      <div class="step-text">Left sidebar → <strong>Authentication</strong> → Get started → <strong>Google</strong> → Enable → Add your email as support email → Save.</div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">STEP 4 — CREATE DATABASE</div>
+      <div class="step-text">Left sidebar → <strong>Firestore Database</strong> → Create database → Choose <strong>Start in test mode</strong> → Pick any region near India (e.g. <code>asia-south1</code>) → Done.</div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">STEP 5 — AUTHORIZE YOUR DOMAIN</div>
+      <div class="step-text">In <strong>Authentication → Settings → Authorized domains</strong> → Add your GitHub Pages URL (e.g. <code>yourusername.github.io</code>).</div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">STEP 6 — PASTE CONFIG INTO THE FILE</div>
+      <div class="step-text">Open <code>protein_tracker.html</code> in Notepad or VS Code. Find the <code>firebaseConfig</code> block near the top. Replace each <code>PASTE_YOUR_...</code> value with your real values. Save the file. Re-upload to GitHub Pages.</div>
+      <div style="margin-top:12px;font-size:0.72rem;color:var(--text3)">Paste your values here to copy easily:</div>
+      <input class="cfg-input" id="cfg_apiKey" placeholder="apiKey">
+      <input class="cfg-input" id="cfg_authDomain" placeholder="authDomain (e.g. protrack-xxx.firebaseapp.com)">
+      <input class="cfg-input" id="cfg_projectId" placeholder="projectId (e.g. protrack-xxx)">
+      <input class="cfg-input" id="cfg_storageBucket" placeholder="storageBucket">
+      <input class="cfg-input" id="cfg_messagingSenderId" placeholder="messagingSenderId">
+      <input class="cfg-input" id="cfg_appId" placeholder="appId">
+      <button class="modal-save-btn" onclick="showConfigToCopy()" style="margin-top:12px;font-size:0.85rem">📋 Generate Config Block to Copy</button>
+      <div id="configOutput" style="margin-top:10px;display:none">
+        <div style="font-size:0.72rem;color:var(--text3);margin-bottom:6px">Copy this and replace the firebaseConfig block in the HTML file:</div>
+        <pre id="configPre" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;
+          padding:12px;font-size:0.72rem;font-family:var(--font-mono);color:var(--accent3);
+          white-space:pre-wrap;overflow-x:auto;cursor:pointer" onclick="copyConfig()" title="Click to copy"></pre>
+        <div style="font-size:0.72rem;color:var(--text3);margin-top:4px">Click the box above to copy to clipboard</div>
+      </div>
+    </div>
+
+    <button class="close-btn" onclick="closeModal('setupModal')">Close</button>
+  </div>
+</div>
+
+<script type="module">
+// Wait for Firebase module
+function waitFb(cb){ if(window._fb) return cb(); setTimeout(()=>waitFb(cb),50); }
+waitFb(boot);
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+const S = { uid:null, foods:[], weight:null, goalG:null, apiKey:'', history:[] };
+let PIE=null, BAR=null, RPIE=null;
+
+const EMOJIS={egg:'🥚',chicken:'🍗',fish:'🐟',salmon:'🐟',tuna:'🐟',milk:'🥛',
+  curd:'🥣',yogurt:'🥣',paneer:'🧀',cheese:'🧀',dal:'🫘',lentil:'🫘',bean:'🫘',
+  tofu:'🥡',soy:'🫘',rice:'🍚',wheat:'🌾',bread:'🍞',roti:'🫓',whey:'💪',
+  protein:'💪',shake:'🥤',nuts:'🥜',peanut:'🥜',almond:'🌰',meat:'🥩',
+  beef:'🥩',mutton:'🥩',pork:'🥩',prawn:'🦐',shrimp:'🦐'};
+const emoji = n => { const l=n.toLowerCase(); for(const[k,v]of Object.entries(EMOJIS))if(l.includes(k))return v; return'🍽️'; };
+const today = () => new Date().toISOString().split('T')[0];
+const score = (t,g) => { if(!g||!t)return 0; const p=t/g; if(p>=1)return 100; if(p>=.9)return 90+Math.round((p-.9)/.1*10); if(p>=.7)return 70+Math.round((p-.7)/.2*20); if(p>=.5)return 50+Math.round((p-.5)/.2*20); return Math.round(p*100); };
+
+// ─── SYNC INDICATOR ──────────────────────────────────────────────────────────
+function setSyncing(st){ const d=document.getElementById('syncDot'),l=document.getElementById('syncLabel'); if(!d)return; d.className='sync-dot '+st; l.textContent={synced:'Synced',syncing:'Syncing…',error:'Sync error'}[st]||st; }
+
+// ─── FIREBASE LOAD ───────────────────────────────────────────────────────────
+async function loadCloud(){
+  if(!S.uid)return;
+  setSyncing('syncing');
+  try{
+    const{db,doc,getDoc,collection,getDocs,query,orderBy}=window._fb;
+    const prof=await getDoc(doc(db,'users',S.uid,'data','profile'));
+    if(prof.exists()){const p=prof.data();S.weight=p.weight||null;S.goalG=p.goalG||null;S.apiKey=p.apiKey||'';}
+    const daySnap=await getDoc(doc(db,'users',S.uid,'days',today()));
+    if(daySnap.exists())S.foods=daySnap.data().foods||[];
+    const hist=await getDocs(query(collection(db,'users',S.uid,'days'),orderBy('date','desc')));
+    S.history=[];
+    hist.forEach(d=>{const data=d.data();if(data.date!==today())S.history.push(data);});
+    setSyncing('synced');
+  }catch(e){console.error(e);setSyncing('error');}
+}
+
+async function saveProfile(){
+  if(!S.uid)return; setSyncing('syncing');
+  try{ const{db,doc,setDoc}=window._fb;
+    await setDoc(doc(db,'users',S.uid,'data','profile'),{weight:S.weight,goalG:S.goalG,apiKey:S.apiKey,updatedAt:new Date().toISOString()},{merge:true});
+    setSyncing('synced');
+  }catch(e){setSyncing('error');}
+}
+
+async function saveToday(){
+  if(!S.uid)return; setSyncing('syncing');
+  try{ const{db,doc,setDoc}=window._fb;
+    await setDoc(doc(db,'users',S.uid,'days',today()),{date:today(),foods:S.foods,total:S.foods.reduce((a,f)=>a+f.protein,0),goal:S.goalG||0,score:score(S.foods.reduce((a,f)=>a+f.protein,0),S.goalG)});
+    setSyncing('synced');
+  }catch(e){setSyncing('error');}
+}
+
+// ─── BOOT ────────────────────────────────────────────────────────────────────
+function boot(){
+  const{auth,onAuthStateChanged}=window._fb;
+  document.getElementById('dateBadge').textContent=new Date().toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+
+  onAuthStateChanged(auth,async user=>{
+    if(user){
+      S.uid=user.uid;
+      document.getElementById('loginScreen').style.display='none';
+      document.getElementById('mainApp').style.display='block';
+      document.getElementById('userAvatar').src=user.photoURL||'';
+      document.getElementById('userName').textContent=user.displayName?.split(' ')[0]||'User';
+      await loadCloud();
+      if(S.weight)document.getElementById('weightBtnText').textContent=`${S.weight} kg`;
+      if(!S.weight)setTimeout(()=>openModal('weightModal'),500);
+      else if(!S.apiKey)setTimeout(()=>openModal('apiKeyModal'),500);
+      render();
+    } else {
+      document.getElementById('loginScreen').style.display='flex';
+      document.getElementById('mainApp').style.display='none';
+    }
+  });
+}
+
+function render(){ renderFoodList(); updateBar(); renderPie(); renderBar(); }
+
+// ─── AUTH ────────────────────────────────────────────────────────────────────
+window.signInGoogle=async()=>{ const{auth,GoogleAuthProvider,signInWithPopup}=window._fb; try{await signInWithPopup(auth,new GoogleAuthProvider());}catch(e){toast('Sign-in failed: '+e.message,'error');}};
+window.doSignOut=async()=>{ if(!confirm('Sign out?'))return; const{auth,signOut}=window._fb; await signOut(auth); };
+
+// ─── WEIGHT ──────────────────────────────────────────────────────────────────
+window.openWeightModal=()=>{ if(S.weight)document.getElementById('weightInput').value=S.weight; updateGoalPreview(); openModal('weightModal'); setTimeout(()=>document.getElementById('weightInput').focus(),300); };
+window.updateGoalPreview=()=>{ const w=parseFloat(document.getElementById('weightInput').value); document.getElementById('goalPreview').textContent=w>0?`${Math.round(w*.8)}g – ${Math.round(w)}g`:'--'; };
+window.saveWeight=async()=>{ const w=parseFloat(document.getElementById('weightInput').value); if(!w||w<20||w>300){toast('⚠️ Enter valid weight 20–300 kg','error');return;} S.weight=w;S.goalG=Math.round(w*.9); document.getElementById('weightBtnText').textContent=`${w} kg`; await saveProfile(); closeModal('weightModal'); updateBar(); toast(`✅ Weight saved! Daily goal: ${S.goalG}g`,'success'); if(!S.apiKey)setTimeout(()=>openModal('apiKeyModal'),500); };
+
+// ─── API KEY ─────────────────────────────────────────────────────────────────
+window.openApiKeyModal=()=>{ if(S.apiKey)document.getElementById('apiKeyInput').value=S.apiKey; openModal('apiKeyModal'); setTimeout(()=>document.getElementById('apiKeyInput').focus(),300); };
+window.saveApiKey=async()=>{ const k=document.getElementById('apiKeyInput').value.trim(); if(!k){toast('⚠️ Please enter your API key','error');return;} S.apiKey=k; await saveProfile(); closeModal('apiKeyModal'); toast('✅ API key saved & synced!','success'); };
+
+// ─── ADD FOOD ────────────────────────────────────────────────────────────────
+window.addFood=async()=>{
+  const inp=document.getElementById('foodInput'), desc=inp.value.trim(); if(!desc)return;
+  const btn=document.getElementById('addBtn'),sp=document.getElementById('spinner'),st=document.getElementById('aiStatusText');
+  btn.disabled=true; sp.classList.add('active'); st.textContent='Asking AI for protein data...';
+  try{
+    if(!S.apiKey){openModal('apiKeyModal');throw new Error('No API key set');}
+    const prompt=`You are a nutrition expert. Given: "${desc}"\nReturn ONLY JSON (no markdown):\n{"name":"clean food name","quantity":"quantity string","protein_g":<number>,"confidence":"high/medium/low","note":"brief note"}\nUse ICMR/Indian nutrition data.`;
+    const res=await fetch('https://openrouter.ai/api/v1/chat/completions',{method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${S.apiKey}`,'HTTP-Referer':'https://protrack.app','X-Title':'ProTrack'},
+      body:JSON.stringify({model:'openai/gpt-4o-mini',max_tokens:200,messages:[{role:'user',content:prompt}],temperature:0.2})});
+    if(!res.ok){const e=await res.json();throw new Error(e.error?.message||'API error');}
+    const data=await res.json();
+    const r=JSON.parse(data.choices[0].message.content.trim().replace(/```json|```/g,'').trim());
+    S.foods.push({id:Date.now(),raw:desc,name:r.name,quantity:r.quantity,protein:r.protein_g,note:r.note,confidence:r.confidence,time:new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})});
+    await saveToday(); inp.value=''; st.textContent=`✅ ${r.name} → ${r.protein_g}g protein`;
+    renderFoodList(); updateBar(); renderPie(); toast(`🎯 ${r.name}: ${r.protein_g}g added`,'success');
+  }catch(e){ st.textContent=`❌ ${e.message}`; toast(`❌ ${e.message}`,'error'); }
+  finally{ btn.disabled=false; sp.classList.remove('active'); }
+};
+
+window.removeFood=async id=>{ S.foods=S.foods.filter(f=>f.id!==id); await saveToday(); renderFoodList(); updateBar(); renderPie(); };
+window.fillPreset=t=>{ document.getElementById('foodInput').value=t; document.getElementById('foodInput').focus(); };
+
+// ─── RENDER ──────────────────────────────────────────────────────────────────
+function renderFoodList(){
+  const el=document.getElementById('foodList');
+  if(!S.foods.length){el.innerHTML=`<div class="empty-log"><div class="empty-log-icon">🥗</div><div>No food logged yet</div><div style="margin-top:4px;font-size:0.75rem">Add a food item above</div></div>`;return;}
+  el.innerHTML=S.foods.map(f=>`<div class="food-item"><div class="food-item-icon">${emoji(f.name)}</div><div class="food-item-info"><div class="food-item-name">${f.name}</div><div class="food-item-detail">${f.quantity} · ${f.time} · ${f.confidence}</div></div><div class="food-item-protein">+${f.protein}g</div><button class="food-item-del" onclick="removeFood(${f.id})">✕</button></div>`).join('');
+}
+
+function updateBar(){
+  const t=S.foods.reduce((a,f)=>a+f.protein,0),g=S.goalG,p=g?Math.min(100,Math.round(t/g*100)):0,sc=score(t,g);
+  document.getElementById('totalProteins').textContent=`${t}g`;
+  document.getElementById('goalGrams').textContent=g?`${g}g`:'--g';
+  document.getElementById('statConsumed').textContent=`${t}g`;
+  document.getElementById('statRemaining').textContent=g?`${Math.max(0,g-t)}g`:'--g';
+  document.getElementById('statItems').textContent=S.foods.length;
+  document.getElementById('statPct').textContent=`${p}%`;
+  document.getElementById('progressFill').style.width=`${p}%`;
+  const c=201.06; document.getElementById('scoreRing').style.strokeDashoffset=c-c*sc/100;
+  document.getElementById('scoreRingText').textContent=sc;
+}
+
+const COLS=['#00e5a0','#7c3aed','#f59e0b','#ef4444','#06b6d4','#8b5cf6','#10b981','#f97316','#ec4899','#84cc16'];
+function renderPie(){
+  const ctx=document.getElementById('pieChart').getContext('2d'),emp=document.getElementById('pieEmpty');
+  if(!S.foods.length){emp.style.display='block';if(PIE){PIE.destroy();PIE=null;}return;}
+  emp.style.display='none'; if(PIE)PIE.destroy();
+  PIE=new Chart(ctx,{type:'doughnut',data:{labels:S.foods.map(f=>f.name),datasets:[{data:S.foods.map(f=>f.protein),backgroundColor:COLS.slice(0,S.foods.length),borderWidth:0,hoverOffset:8}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'65%',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.parsed}g protein`},backgroundColor:'#1c1c25',borderColor:'#2a2a38',borderWidth:1,titleColor:'#f0f0f8',bodyColor:'#9090a8'}}}});
+}
+
+function renderBar(){
+  const ctx=document.getElementById('barChart').getContext('2d');
+  const days=[]; for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);days.push(d.toISOString().split('T')[0]);}
+  const labels=days.map(d=>new Date(d).toLocaleDateString('en-IN',{weekday:'short',day:'numeric'}));
+  const consumed=days.map(d=>d===today()?S.foods.reduce((a,f)=>a+f.protein,0):(S.history.find(h=>h.date===d)||{total:0}).total);
+  const goals=days.map(d=>d===today()?S.goalG||0:(S.history.find(h=>h.date===d)||{goal:S.goalG||0}).goal);
+  if(BAR)BAR.destroy();
+  BAR=new Chart(ctx,{type:'bar',data:{labels,datasets:[
+    {label:'Consumed (g)',data:consumed,borderRadius:6,borderSkipped:false,backgroundColor:consumed.map((v,i)=>v>=(goals[i]||9999)?'rgba(0,229,160,0.8)':'rgba(124,58,237,0.7)')},
+    {label:'Goal (g)',data:goals,type:'line',borderColor:'rgba(245,158,11,0.7)',borderDash:[4,4],borderWidth:2,pointBackgroundColor:'rgba(245,158,11,0.9)',pointRadius:3,fill:false,tension:0.3}
+  ]},options:{responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{labels:{color:'#9090a8',font:{size:11},boxWidth:12}},tooltip:{backgroundColor:'#1c1c25',borderColor:'#2a2a38',borderWidth:1,titleColor:'#f0f0f8',bodyColor:'#9090a8'}},
+    scales:{x:{grid:{color:'rgba(255,255,255,0.03)'},ticks:{color:'#5a5a70',font:{size:11}}},y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#5a5a70',font:{size:11}},beginAtZero:true}}}});
+}
+
+// ─── EOD REPORT ──────────────────────────────────────────────────────────────
+window.generateReport=async()=>{
+  if(!S.foods.length){toast('⚠️ No food logged today!','error');return;}
+  const t=S.foods.reduce((a,f)=>a+f.protein,0),g=S.goalG||80,p=Math.round(t/g*100),sc=score(t,g);
+  const sb=document.getElementById('reportScoreBig'); sb.textContent=sc; sb.className='score-big';
+  sb.classList.add(sc>=80?'excellent':sc>=50?'good':'poor');
+  const GR=[[90,'EXCELLENT — PROTEIN KING 👑'],[75,'GREAT JOB — WELL DONE 💪'],[60,'GOOD EFFORT — KEEP IT UP 🎯'],[40,'NEEDS IMPROVEMENT 📈'],[0,'UNDER TARGET — TRY TOMORROW 🔄']];
+  document.getElementById('reportGrade').textContent=GR.find(([thr])=>sc>=thr)[1];
+  document.getElementById('repConsumed').textContent=`${t}g`;
+  document.getElementById('repGoal').textContent=`${g}g`;
+  document.getElementById('repPct').textContent=`${p}%`;
+  document.getElementById('reportFoodList').innerHTML=
+    S.foods.map(f=>`<div class="report-food-row"><span>${emoji(f.name)} ${f.name} <span style="color:var(--text3);font-size:0.75rem">(${f.quantity})</span></span><span style="color:var(--accent);font-family:var(--font-mono);font-weight:600">${f.protein}g</span></div>`).join('')+
+    `<div class="report-food-row" style="border-top:1px solid var(--accent);margin-top:4px;padding-top:8px"><span style="font-weight:600">Total</span><span style="color:var(--accent);font-family:var(--font-mono);font-weight:700;font-size:1rem">${t}g</span></div>`;
+  openModal('reportModal');
+  setTimeout(()=>{
+    const rc=document.getElementById('reportPie').getContext('2d');
+    if(RPIE)RPIE.destroy();
+    RPIE=new Chart(rc,{type:'doughnut',data:{labels:['Consumed','Remaining'],datasets:[{data:[t,Math.max(0,g-t)],backgroundColor:['#00e5a0','#2a2a38'],borderWidth:0,hoverOffset:6}]},
+      options:{responsive:true,maintainAspectRatio:false,cutout:'70%',plugins:{legend:{labels:{color:'#9090a8',font:{size:11},boxWidth:10}}}}});
+  },100);
+  document.getElementById('aiInsightText').textContent='Generating personalised insight...';
+  if(S.apiKey){
+    try{
+      const topF=S.foods.map(f=>`${f.name}(${f.protein}g)`).join(', ');
+      const res=await fetch('https://openrouter.ai/api/v1/chat/completions',{method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':`Bearer ${S.apiKey}`,'HTTP-Referer':'https://protrack.app'},
+        body:JSON.stringify({model:'openai/gpt-4o-mini',max_tokens:120,messages:[{role:'user',content:`Friendly nutritionist. 2-3 sentence insight for someone who consumed ${t}g protein vs goal ${g}g (score ${sc}/100). Foods: ${topF}. Encouraging, specific, one improvement tip. Under 60 words.`}],temperature:0.7})});
+      const d=await res.json();
+      document.getElementById('aiInsightText').textContent=d.choices[0].message.content.trim();
+    }catch(e){document.getElementById('aiInsightText').textContent='Could not generate insight.';}
+  } else { document.getElementById('aiInsightText').textContent='Add your API key to get AI insights.'; }
+};
+
+window.saveAndClose=async()=>{
+  const t=S.foods.reduce((a,f)=>a+f.protein,0),g=S.goalG||80,td=today();
+  setSyncing('syncing');
+  try{
+    const{db,doc,setDoc}=window._fb;
+    await setDoc(doc(db,'users',S.uid,'days',td),{date:td,foods:S.foods,total:t,goal:g,score:score(t,g),finalized:true});
+    setSyncing('synced');
+  }catch(e){setSyncing('error');}
+  S.foods=[];
+  closeModal('reportModal');
+  render();
+  toast('✅ Day saved to cloud! Starting fresh.','success');
+};
+
+// ─── SETUP CONFIG HELPER ─────────────────────────────────────────────────────
+window.showConfigToCopy=()=>{
+  const v=id=>document.getElementById(id).value.trim();
+  const cfg=`const firebaseConfig = {\n  apiKey: "${v('cfg_apiKey')}",\n  authDomain: "${v('cfg_authDomain')}",\n  projectId: "${v('cfg_projectId')}",\n  storageBucket: "${v('cfg_storageBucket')}",\n  messagingSenderId: "${v('cfg_messagingSenderId')}",\n  appId: "${v('cfg_appId')}"\n};`;
+  document.getElementById('configPre').textContent=cfg;
+  document.getElementById('configOutput').style.display='block';
+};
+window.copyConfig=()=>{
+  navigator.clipboard.writeText(document.getElementById('configPre').textContent)
+    .then(()=>toast('📋 Copied to clipboard!','success'))
+    .catch(()=>toast('Select and copy manually','error'));
+};
+
+// ─── MODALS ──────────────────────────────────────────────────────────────────
+window.openModal =id=>document.getElementById(id).classList.add('active');
+window.closeModal=id=>document.getElementById(id).classList.remove('active');
+document.querySelectorAll('.modal-overlay').forEach(el=>el.addEventListener('click',e=>{if(e.target===el)closeModal(el.id);}));
+
+// ─── TOAST ───────────────────────────────────────────────────────────────────
+function toast(msg,type='success'){
+  const c=document.getElementById('toastContainer'),t=document.createElement('div');
+  t.className=`toast ${type}`;t.textContent=msg;c.appendChild(t);setTimeout(()=>t.remove(),4000);
+}
+window.toast=toast;
+</script>
+</body>
+</html>
